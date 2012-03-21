@@ -10,6 +10,7 @@ from logging import warning, error
 import logging
 import os.path
 import sys
+from subprocess import check_call
 
 _packages = []
 
@@ -113,13 +114,27 @@ def packagesDownload(packageNames, withDependencies=False):
 
 
 def _extractFile(filename, output_dir=_extractedCacheDirectory):
-  from subprocess import check_call
-  try:
-    with open('7z.log', 'w') as logfile:
-      check_call(['7z', 'x', '-o'+output_dir, '-y', filename], stdout=logfile)
-    os.remove('7z.log')
-  except:
-    error('Failed to extract %s', filename)
+    try:
+        with open('extract.log', 'w') as logfile:
+            if sys.platform == 'win32' or sys.platform == 'nt':
+                check_call(['7z', 'x', '-o%s'%output_dir, '-y', filename], stdout=logfile)
+            else:
+                cpio_filename = os.path.join(_extractedCacheDirectory, '%s.cpio' % os.path.splitext(os.path.basename(filename))[0])
+
+                if filename.endswith('.rpm'):
+                    with open(cpio_filename, 'wb') as cpio_file:
+                        check_call(['rpm2cpio', filename, '-idu'], stdout=cpio_file, stderr=logfile)
+                        cpio_file.flush()
+                elif filename.endswith('.cpio'):
+                    with open(cpio_filename, 'rb') as cpio_file:
+                        owd = os.curdir
+                        os.chdir(output_dir)
+                        check_call(['cpio', '-i', '-d', '-m', '-u'], stdin=cpio_file, stdout=logfile, stderr=logfile)
+                        os.chdir(owd)
+
+        os.remove('extract.log')
+    except:
+        logging.error('Failed to extract %s', filename)
 
 
 def packagesExtract(packageFilenames, srcpkg=False):
